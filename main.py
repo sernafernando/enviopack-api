@@ -82,7 +82,7 @@ def form():
             <img src="https://mshop.gaussonline.com.ar/Logo%20%2B%20web%20blanco.png" alt="Logo Gaussonline">
         </div>
         <h1>Subí tu archivo PDF</h1>
-        <form action="/upload" method="post" enctype="multipart/form-data">
+        <form action="/extract" method="post" enctype="multipart/form-data">
             <input type="file" name="file" accept=".pdf" required />
             <button type="submit">Procesar</button>
         </form>
