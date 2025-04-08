@@ -1,12 +1,21 @@
-from fastapi import FastAPI, File, UploadFile
-from fastapi.responses import HTMLResponse
-from PyPDF2 import PdfReader
+from fastapi import FastAPI, UploadFile, File
+from fastapi.responses import HTMLResponse, PlainTextResponse
+from fastapi.middleware.cors import CORSMiddleware
+import pdfplumber
 import uvicorn
 
 app = FastAPI()
 
+# CORS libre
+app.add_middleware(
+    CORSMiddleware,
+    allow_origins=["*"],
+    allow_methods=["*"],
+    allow_headers=["*"],
+)
+
 @app.get("/", response_class=HTMLResponse)
-async def form():
+def form():
     return """
 <!DOCTYPE html>
 <html lang="es">
@@ -82,28 +91,19 @@ async def form():
 </html>
 """
 
-@app.post("/upload", response_class=HTMLResponse)
-async def upload(file: UploadFile = File(...)):
-    reader = PdfReader(file.file)
+@app.post("/extract", response_class=PlainTextResponse)
+async def extract(file: UploadFile = File(...)):
     pedidos = []
+    with pdfplumber.open(file.file) as pdf:
+        for page in pdf.pages:
+            text = page.extract_text()
+            if text:
+                lines = text.split('\n')
+                for line in lines:
+                    if 'PEDIDO:' in line.upper():
+                        parts = line.split("PEDIDO:")
+                        if len(parts) > 1:
+                            numero = parts[1].strip().split()[0]
+                            pedidos.append(numero)
+    return "\n".join(pedidos)
 
-    for page in reader.pages:
-        text = page.extract_text()
-        if not text:
-            continue
-        for line in text.splitlines():
-            try:
-                pedido = line.split("PEDIDO:")[1].strip().split()[0]
-                pedidos.append(pedido)
-            except IndexError:
-                continue 
-
-    joined = "\\n".join(pedidos)
-    return f"""
-    <h2>Pedidos encontrados:</h2>
-    <textarea rows='10' cols='60' id='output'>{joined}</textarea><br>
-    <button onclick="navigator.clipboard.writeText(document.getElementById('output').value)">Copiar</button>
-    <a href="data:text/plain;charset=utf-8,{joined}" download="pedidos.txt">
-        <button>Descargar TXT</button>
-    </a>
-    """
