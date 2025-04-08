@@ -199,7 +199,8 @@ async def extract(file: UploadFile = File(...)):
 </html>
 """
 
-@app.get("/ping", response_class=PlainTextResponse)
-def ping():
+@app.api_route("/ping", methods=["HEAD", "GET"], response_class=PlainTextResponse)
+async def ping(request: Request):
     return "pong"
+
 
