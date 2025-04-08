@@ -198,3 +198,7 @@ async def extract(file: UploadFile = File(...)):
 </body>
 </html>
 """
+
+@app.get("/ping")
+def ping():
+    return {"ok": True}
