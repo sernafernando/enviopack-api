@@ -1,5 +1,5 @@
 from fastapi import FastAPI, UploadFile, File, Request
-from fastapi.responses import HTMLResponse, PlainTextResponse, StreamingResponse, JSONResponse
+from fastapi.responses import HTMLResponse, PlainTextResponse, StreamingResponse, JSONResponse, Response
 from fastapi.middleware.cors import CORSMiddleware
 import pdfplumber
 import uvicorn
@@ -464,7 +464,7 @@ def exportar_excel():
         })
 
 
-@app.get("/pedidos-json", response_class=JSONResponse)
+@app.get("/pedidos-json")
 def pedidos_en_json():
     salida = []
 
@@ -474,4 +474,7 @@ def pedidos_en_json():
             fila_con_pedido.update(fila)
             salida.append(fila_con_pedido)
 
-    return JSONResponse(content=salida, media_type="application/json", indent=2)
+    # Serializar bonito a JSON con indent
+    json_data = json.dumps(salida, indent=2, ensure_ascii=False)
+
+    return Response(content=json_data, media_type="application/json")
