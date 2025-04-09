@@ -204,7 +204,7 @@ def form():
             text-align: center;
         }
         .logo img {
-            max-width: 200px;
+            max-width: 250px;
         }
     </style>
 </head>
