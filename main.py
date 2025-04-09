@@ -12,6 +12,7 @@ import json
 import pandas as pd
 import re
 from io import BytesIO
+from dotenv import load_dotenv
 
 app = FastAPI()
 
@@ -23,25 +24,37 @@ app.add_middleware(
     allow_headers=["*"],
 )
 
+# Carga desde .env si estás local (no interfiere en Render)
+load_dotenv()
 
-pusername = os.environ.get('PUSERNAME')
-ppassword = os.environ.get('PPASWORD')
-pcompany = os.environ.get('PCOMPANY')
-pwebwervice = os.environ.get('PWEBWERVICE')
-url_ws = os.environ.get('URL_WS')
+def get_env_var(key: str):
+    value = os.getenv(key)
+    if not value:
+        raise RuntimeError(f"❌ La variable de entorno {key} no está definida.")
+    return value
+
+pusername = get_env_var('PUSERNAME')
+ppassword = get_env_var('PPASWORD')  # ← O corregila a PASSWORD si fue un typo
+pcompany = get_env_var('PCOMPANY')
+pwebwervice = get_env_var('PWEBWERVICE')
+url_ws = get_env_var('URL_WS')
 
 token = None
-consulta_resultados = []
+consulta_resultados = {}
 token_actual = None
 pedidos_guardados = []
 
 
 def authenticate():
-    
+
     soap_action = "http://microsoft.com/webservices/AuthenticateUser"
     xml_payload = f'<?xml version="1.0" encoding="utf-8"?><soap:Envelope xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance" xmlns:xsd="http://www.w3.org/2001/XMLSchema" xmlns:soap="http://schemas.xmlsoap.org/soap/envelope/"><soap:Header><wsBasicQueryHeader xmlns="http://microsoft.com/webservices/"><pUsername>{pusername}</pUsername><pPassword>{ppassword}</pPassword><pCompany>{pcompany}</pCompany><pBranch>1</pBranch><pLanguage>2</pLanguage><pWebWervice>{pwebwervice}</pWebWervice></wsBasicQueryHeader></soap:Header><soap:Body><AuthenticateUser xmlns="http://microsoft.com/webservices/" /></soap:Body></soap:Envelope>'
-    header_ws =  {"Content-Type": "text/xml", "SOAPAction": soap_action, "muteHttpExceptions": "true"}
-    response = requests.post(url_ws, data=xml_payload,headers=header_ws)
+    header_ws = {
+        "Content-Type": "text/xml",
+        "SOAPAction": soap_action,
+        "muteHttpExceptions": "true"
+    }
+    response = requests.post(url_ws, data=xml_payload, headers=header_ws)
     # Parsear la respuesta XML (suponiendo que response.content tiene el XML)
     root = etree.fromstring(response.content)
 
@@ -51,20 +64,24 @@ def authenticate():
         'microsoft': 'http://microsoft.com/webservices/'
     }
 
-
     # Busca el nodo AuthenticateUserResponse dentro del body
     # Buscar el contenido dentro de AuthenticateUserResult usando XPath
-    auth_result = root.xpath('//microsoft:AuthenticateUserResult', namespaces=namespaces)
+    auth_result = root.xpath('//microsoft:AuthenticateUserResult',
+                             namespaces=namespaces)
 
     # Mostrar el contenido si existe
     if auth_result:
         global token
         token = auth_result[0].text
     else:
-        print("No se encontró el elemento AuthenticateUserResult") # Muestra el contenido del nodo si lo tiene
-    
+        print("No se encontró el elemento AuthenticateUserResult"
+              )  # Muestra el contenido del nodo si lo tiene
+
     return token
+
+
 class LargeXMLHandler(xml.sax.ContentHandler):
+
     def __init__(self):
         self.result_content = []
         self.is_in_result = False
@@ -83,6 +100,7 @@ class LargeXMLHandler(xml.sax.ContentHandler):
         # Al encontrar contenido de texto dentro de un nodo
         if self.is_in_result:
             self.result_content.append(content)
+
 
 def ventas_por_fuera(mlID: str, token: str):
     xml_payload = f'''<?xml version="1.0" encoding="utf-8"?>
@@ -105,7 +123,9 @@ def ventas_por_fuera(mlID: str, token: str):
     </soap:Envelope>'''
 
     headers = {"Content-Type": "text/xml"}
-    response = requests.post(url_ws, data=xml_payload.encode('utf-8'), headers=headers)
+    response = requests.post(url_ws,
+                             data=xml_payload.encode('utf-8'),
+                             headers=headers)
 
     if response.status_code != 200:
         return None
@@ -125,9 +145,15 @@ def ventas_por_fuera(mlID: str, token: str):
 
     try:
         data = json.loads(match.group(0))
-        return pd.DataFrame(data)
+        df = pd.DataFrame(data)
+
+        # ✅ Filtrar filas donde item_id == 460
+        df = df[df["item_id"] != 460]
+
+        return df
     except Exception:
         return None
+
 
 @app.get("/", response_class=HTMLResponse)
 def form():
@@ -169,7 +195,7 @@ def form():
             width: 100%;
         }
         button {
-            background-color: #00b894;
+            background-color: #00b0b8;
             color: white;
             border: none;
             padding: 0.7rem 1.2rem;
@@ -206,10 +232,10 @@ def form():
 </html>
 """
 
+
 @app.post("/extract", response_class=HTMLResponse)
 async def extract(file: UploadFile = File(...)):
     pedidos = []
-    
 
     with pdfplumber.open(file.file) as pdf:
         for page in pdf.pages:
@@ -277,7 +303,7 @@ async def extract(file: UploadFile = File(...)):
             gap: 1rem;
         }}
         button {{
-            background-color: #00b894;
+            background-color: #00b0b8;
             color: white;
             border: none;
             padding: 0.7rem 1.2rem;
@@ -321,9 +347,13 @@ async def extract(file: UploadFile = File(...)):
 </html>
 """
 
-@app.api_route("/ping", methods=["HEAD", "GET"], response_class=PlainTextResponse)
+
+@app.api_route("/ping",
+               methods=["HEAD", "GET"],
+               response_class=PlainTextResponse)
 async def ping(request: Request):
     return "pong"
+
 
 @app.get("/consulta-completa", response_class=HTMLResponse)
 async def consulta_completa():
@@ -343,7 +373,6 @@ async def consulta_completa():
         except Exception as e:
             print(f"Error al consultar pedido {pedido}: {e}")
 
-
         if df is None or df.empty:
             # Reintento automático si falla
             token_actual = authenticate()
@@ -351,7 +380,7 @@ async def consulta_completa():
                 df = ventas_por_fuera(mlID=pedido, token=token_actual)
             except Exception as e:
                 print(f"Error al consultar pedido {pedido}: {e}")
-        
+
         if df is not None and not df.empty:
             tabla = df.to_html(classes="table", index=False)
             consulta_resultados[pedido] = df
@@ -382,35 +411,67 @@ async def consulta_completa():
                 text-align: left;
             }}
             .table th {{
-                background-color: #00b894;
+                background-color: #00b0b8;
             }}
             h3 {{
                 margin-top: 2rem;
-                border-bottom: 1px solid #00b894;
+                border-bottom: 1px solid #00b0b8;
             }}
         </style>
     </head>
     <body>
         <h1>Resultados por Pedido</h1>
+        <div style="margin-bottom: 2rem;">
+        <a href="/export-excel" target="_blank">
+            <button style="
+                background-color: #00b0b8;
+                color: white;
+                border: none;
+                padding: 0.7rem 1.2rem;
+                border-radius: 8px;
+                cursor: pointer;
+                font-size: 1rem;
+            ">
+                📥 Exportar a Excel
+            </button>
+        </a>
         {''.join(tablas_html)}
     </body>
     </html>
     """
 
-       
-
-
     return HTMLResponse(content=html)
+
 
 @app.get("/export-excel")
 def exportar_excel():
     output = BytesIO()
+
+    # Combinar todos los DataFrames agregando la columna 'pedido'
+    dfs = []
+    for pedido, df in consulta_resultados.items():
+        df_copy = df.copy()
+        df_copy.insert(0, "pedido", pedido)  # Agrega la columna al inicio
+        dfs.append(df_copy)
+
+    if not dfs:
+        return PlainTextResponse("No hay datos para exportar.",
+                                 status_code=400)
+
+    final_df = pd.concat(dfs, ignore_index=True)
+
     with pd.ExcelWriter(output, engine="xlsxwriter") as writer:
-        for pedido, df in consulta_resultados.items():
-            df.to_excel(writer, sheet_name=str(pedido)[:31], index=False)
+        final_df.to_excel(writer, sheet_name="Pedidos", index=False)
+
     output.seek(0)
-    return StreamingResponse(output, media_type="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
-                             headers={"Content-Disposition": "attachment; filename=consulta_pedidos.xlsx"})
+    return StreamingResponse(
+        output,
+        media_type=
+        "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
+        headers={
+            "Content-Disposition": "attachment; filename=consulta_pedidos.xlsx"
+        })
+
 
 @app.get("/pedidos-json")
 def pedidos_en_json():
