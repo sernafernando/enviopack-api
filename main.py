@@ -328,7 +328,7 @@ async def consulta_completa():
 
     # Asegurarse de tener token válido
     if not token_actual:
-        token_actual = obtener_token()
+        token_actual = authenticate()
 
     tablas_html = []
     for pedido in pedidos_guardados:
@@ -336,7 +336,7 @@ async def consulta_completa():
 
         if df is None or df.empty:
             # Reintento automático si falla
-            token_actual = obtener_token()
+            token_actual = authenticate()
             df = ventas_por_fuera(mlID=pedido, token=token_actual)
 
         if df is not None and not df.empty:
