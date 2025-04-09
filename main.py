@@ -291,6 +291,7 @@ async def extract(file: UploadFile = File(...)):
         <div class="buttons">
             <button onclick="copiar()">Copiar al portapapeles</button>
             <button onclick="descargar()">Descargar como .txt</button>
+            <button onclick="window.location.href='/consulta-completa'">Generar consulta</button>
         </div>
     </div>
     <script>
