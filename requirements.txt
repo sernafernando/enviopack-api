@@ -3,3 +3,12 @@ fastapi
 uvicorn
 pdfplumber
 python-multipart
+lxml
+xml.sax
+os
+requests
+html
+json
+pandas
+re
+io

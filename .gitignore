@@ -1,0 +1,25 @@
+# Carpetas de compilación de PyInstaller
+build/
+dist/
+__pycache__/
+*.spec
+
+# Archivos temporales / cachés
+*.pyc
+*.pyo
+*.log
+*.tmp
+
+# Archivos del sistema
+.DS_Store
+Thumbs.db
+
+# Entornos virtuales
+.venv/
+env/
+venv/
+
+# Archivos de entorno/local config
+.env
+
+app_runner.py

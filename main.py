@@ -1,8 +1,17 @@
 from fastapi import FastAPI, UploadFile, File, Request
-from fastapi.responses import HTMLResponse, PlainTextResponse
+from fastapi.responses import HTMLResponse, PlainTextResponse, StreamingResponse, JSONResponse
 from fastapi.middleware.cors import CORSMiddleware
 import pdfplumber
 import uvicorn
+import os
+from lxml import etree
+import xml.sax
+import requests
+import html
+import json
+import pandas as pd
+import re
+from io import BytesIO
 
 app = FastAPI()
 
@@ -13,6 +22,109 @@ app.add_middleware(
     allow_methods=["*"],
     allow_headers=["*"],
 )
+
+
+pusername = os.environ.get('PUSERNAME')
+ppassword = os.environ.get('PPASWORD')
+pcompany = os.environ.get('PCOMPANY')
+pwebwervice = os.environ.get('PWEBWERVICE')
+url_ws = os.environ.get('URL_WS')
+
+token = None
+
+consulta_resultados = []
+
+def authenticate():
+    soap_action = "http://microsoft.com/webservices/AuthenticateUser"
+    xml_payload = f'<?xml version="1.0" encoding="utf-8"?><soap:Envelope xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance" xmlns:xsd="http://www.w3.org/2001/XMLSchema" xmlns:soap="http://schemas.xmlsoap.org/soap/envelope/"><soap:Header><wsBasicQueryHeader xmlns="http://microsoft.com/webservices/"><pUsername>{pusername}</pUsername><pPassword>{ppassword}</pPassword><pCompany>{pcompany}</pCompany><pBranch>1</pBranch><pLanguage>2</pLanguage><pWebWervice>{pwebwervice}</pWebWervice></wsBasicQueryHeader></soap:Header><soap:Body><AuthenticateUser xmlns="http://microsoft.com/webservices/" /></soap:Body></soap:Envelope>'
+    header_ws =  {"Content-Type": "text/xml", "SOAPAction": soap_action, "muteHttpExceptions": "true"}
+    response = requests.post(url_ws, data=xml_payload,headers=header_ws)
+    # Parsear la respuesta XML (suponiendo que response.content tiene el XML)
+    root = etree.fromstring(response.content)
+
+    # Definir los espacios de nombres para usarlos en las consultas XPath
+    namespaces = {
+        'soap': 'http://schemas.xmlsoap.org/soap/envelope/',
+        'microsoft': 'http://microsoft.com/webservices/'
+    }
+
+
+    # Busca el nodo AuthenticateUserResponse dentro del body
+    # Buscar el contenido dentro de AuthenticateUserResult usando XPath
+    auth_result = root.xpath('//microsoft:AuthenticateUserResult', namespaces=namespaces)
+
+    # Mostrar el contenido si existe
+    if auth_result:
+        global token
+        token = auth_result[0].text
+    else:
+        print("No se encontró el elemento AuthenticateUserResult") # Muestra el contenido del nodo si lo tiene
+    
+    return token
+class LargeXMLHandler(xml.sax.ContentHandler):
+    def __init__(self):
+        self.result_content = []
+        self.is_in_result = False
+
+    def startElement(self, name, attrs):
+        # Cuando el parser encuentra el inicio de un elemento
+        if name == 'wsGBPScriptExecute4DatasetResult':
+            self.is_in_result = True
+
+    def endElement(self, name):
+        # Cuando el parser encuentra el final de un elemento
+        if name == 'wsGBPScriptExecute4DatasetResult':
+            self.is_in_result = False
+
+    def characters(self, content):
+        # Al encontrar contenido de texto dentro de un nodo
+        if self.is_in_result:
+            self.result_content.append(content)
+
+def ventas_por_fuera(mlID: str, token: str):
+    xml_payload = f'''<?xml version="1.0" encoding="utf-8"?>
+    <soap:Envelope xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance" xmlns:xsd="http://www.w3.org/2001/XMLSchema" xmlns:soap="http://schemas.xmlsoap.org/soap/envelope/">
+    <soap:Header>
+        <wsBasicQueryHeader xmlns="http://microsoft.com/webservices/">
+            <pUsername>{pusername}</pUsername>
+            <pPassword>{ppassword}</pPassword>
+            <pCompany>{pcompany}</pCompany>
+            <pWebWervice>{pwebwervice}</pWebWervice>
+            <pAuthenticatedToken>{token}</pAuthenticatedToken>
+        </wsBasicQueryHeader>
+    </soap:Header>
+    <soap:Body>
+        <wsGBPScriptExecute4Dataset xmlns="http://microsoft.com/webservices/">
+            <strScriptLabel>mlidToSheets</strScriptLabel>
+            <strJSonParameters>{{"mlID": "{mlID}"}}</strJSonParameters>
+        </wsGBPScriptExecute4Dataset>
+    </soap:Body>
+    </soap:Envelope>'''
+
+    headers = {"Content-Type": "text/xml"}
+    response = requests.post(url_ws, data=xml_payload.encode('utf-8'), headers=headers)
+
+    if response.status_code != 200:
+        return None
+
+    # XML Parsing
+    parser = xml.sax.make_parser()
+    handler = LargeXMLHandler()
+    parser.setContentHandler(handler)
+    xml.sax.parseString(response.content, handler)
+
+    result_content = ''.join(handler.result_content)
+    unescaped_result = html.unescape(result_content)
+    match = re.search(r'\[.*?\]', unescaped_result)
+
+    if not match:
+        return None
+
+    try:
+        data = json.loads(match.group(0))
+        return pd.DataFrame(data)
+    except Exception:
+        return None
 
 @app.get("/", response_class=HTMLResponse)
 def form():
@@ -94,6 +206,9 @@ def form():
 @app.post("/extract", response_class=HTMLResponse)
 async def extract(file: UploadFile = File(...)):
     pedidos = []
+    global pedidos_guardados
+    pedidos_guardados = pedidos.copy()
+
     with pdfplumber.open(file.file) as pdf:
         for page in pdf.pages:
             text = page.extract_text()
@@ -203,4 +318,86 @@ async def extract(file: UploadFile = File(...)):
 async def ping(request: Request):
     return "pong"
 
+@app.get("/consulta-completa", response_class=HTMLResponse)
+async def consulta_completa():
+    global token_actual
 
+    # Asegurarse de tener token válido
+    if not token_actual:
+        token_actual = obtener_token()
+
+    tablas_html = []
+    for pedido in pedidos_guardados:
+        df = ventas_por_fuera(mlID=pedido, token=token_actual)
+
+        if df is None or df.empty:
+            # Reintento automático si falla
+            token_actual = obtener_token()
+            df = ventas_por_fuera(mlID=pedido, token=token_actual)
+
+        if df is not None and not df.empty:
+            tabla = df.to_html(classes="table", index=False)
+            consulta_resultados[pedido] = df
+        else:
+            tabla = f"<p>No se encontró información para pedido {pedido}</p>"
+
+        tablas_html.append(f"<h3>Pedido: {pedido}</h3>{tabla}")
+
+    html = f"""
+    <html>
+    <head>
+        <style>
+            body {{
+                background-color: #121212;
+                color: white;
+                font-family: sans-serif;
+                padding: 2rem;
+            }}
+            .table {{
+                background-color: #1e1e1e;
+                border-collapse: collapse;
+                width: 100%;
+                color: white;
+            }}
+            .table th, .table td {{
+                border: 1px solid #333;
+                padding: 8px;
+                text-align: left;
+            }}
+            .table th {{
+                background-color: #00b894;
+            }}
+            h3 {{
+                margin-top: 2rem;
+                border-bottom: 1px solid #00b894;
+            }}
+        </style>
+    </head>
+    <body>
+        <h1>Resultados por Pedido</h1>
+        {''.join(tablas_html)}
+    </body>
+    </html>
+    """
+
+       
+
+
+    return HTMLResponse(content=html)
+
+@app.get("/export-excel")
+def exportar_excel():
+    output = BytesIO()
+    with pd.ExcelWriter(output, engine="xlsxwriter") as writer:
+        for pedido, df in consulta_resultados.items():
+            df.to_excel(writer, sheet_name=str(pedido)[:31], index=False)
+    output.seek(0)
+    return StreamingResponse(output, media_type="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
+                             headers={"Content-Disposition": "attachment; filename=consulta_pedidos.xlsx"})
+
+@app.get("/pedidos-json")
+def pedidos_en_json():
+    salida = {}
+    for pedido, df in consulta_resultados.items():
+        salida[pedido] = df.to_dict(orient="records")
+    return JSONResponse(content=salida)
