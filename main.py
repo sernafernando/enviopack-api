@@ -209,8 +209,7 @@ def form():
 @app.post("/extract", response_class=HTMLResponse)
 async def extract(file: UploadFile = File(...)):
     pedidos = []
-    global pedidos_guardados
-    pedidos_guardados = pedidos.copy()
+    
 
     with pdfplumber.open(file.file) as pdf:
         for page in pdf.pages:
@@ -226,6 +225,10 @@ async def extract(file: UploadFile = File(...)):
 
     pedidos_str = "".join(f"<li>{p}</li>" for p in pedidos)
     pedidos_txt = "\\n".join(pedidos)
+
+    global pedidos_guardados
+    pedidos_guardados = pedidos.copy()
+    print(f"Pedidos a consultar: {pedidos_guardados}")
 
     return f"""
 <!DOCTYPE html>
@@ -331,14 +334,24 @@ async def consulta_completa():
         token_actual = authenticate()
 
     tablas_html = []
+    print(f"Token actual: {token_actual}")
+
     for pedido in pedidos_guardados:
-        df = ventas_por_fuera(mlID=pedido, token=token_actual)
+        print(f"Consultando pedido: {pedido}")
+        try:
+            df = ventas_por_fuera(mlID=pedido, token=token_actual)
+        except Exception as e:
+            print(f"Error al consultar pedido {pedido}: {e}")
+
 
         if df is None or df.empty:
             # Reintento automático si falla
             token_actual = authenticate()
-            df = ventas_por_fuera(mlID=pedido, token=token_actual)
-
+            try:
+                df = ventas_por_fuera(mlID=pedido, token=token_actual)
+            except Exception as e:
+                print(f"Error al consultar pedido {pedido}: {e}")
+        
         if df is not None and not df.empty:
             tabla = df.to_html(classes="table", index=False)
             consulta_resultados[pedido] = df
