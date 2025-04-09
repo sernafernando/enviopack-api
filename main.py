@@ -12,7 +12,6 @@ import json
 import pandas as pd
 import re
 from io import BytesIO
-from dotenv import load_dotenv
 
 app = FastAPI()
 
@@ -24,20 +23,12 @@ app.add_middleware(
     allow_headers=["*"],
 )
 
-# Carga desde .env si estás local (no interfiere en Render)
-load_dotenv()
+pusername = os.environ.get('PUSERNAME')
+ppassword = os.environ.get('PPASSWORD')
+pcompany = os.environ.get('PCOMPANY')
+pwebwervice = os.environ.get('PWEBWERVICE')
+url_ws = os.environ.get('URL_WS')
 
-def get_env_var(key: str):
-    value = os.getenv(key)
-    if not value:
-        raise RuntimeError(f"❌ La variable de entorno {key} no está definida.")
-    return value
-
-pusername = get_env_var('PUSERNAME')
-ppassword = get_env_var('PPASWORD')  # ← O corregila a PASSWORD si fue un typo
-pcompany = get_env_var('PCOMPANY')
-pwebwervice = get_env_var('PWEBWERVICE')
-url_ws = get_env_var('URL_WS')
 
 token = None
 consulta_resultados = {}
