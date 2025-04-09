@@ -464,9 +464,14 @@ def exportar_excel():
         })
 
 
-@app.get("/pedidos-json")
+@app.get("/pedidos-json", response_class=JSONResponse)
 def pedidos_en_json():
-    salida = {}
+    salida = []
+
     for pedido, df in consulta_resultados.items():
-        salida[pedido] = df.to_dict(orient="records")
-    return JSONResponse(content=salida)
+        for fila in df.to_dict(orient="records"):
+            fila_con_pedido = {"pedido": pedido}
+            fila_con_pedido.update(fila)
+            salida.append(fila_con_pedido)
+
+    return JSONResponse(content=salida, media_type="application/json", indent=2)
