@@ -186,7 +186,7 @@ def form():
             width: 100%;
         }
         button {
-            background-color: #00b0b8;
+            background-color: #044BD9;
             color: white;
             border: none;
             padding: 0.7rem 1.2rem;
@@ -197,7 +197,7 @@ def form():
             font-size: 1rem;
         }
         button:hover {
-            background-color: #019874;
+            background-color: #0476D9;
         }
         .logo {
             margin-bottom: 1.5rem;
@@ -294,7 +294,7 @@ async def extract(file: UploadFile = File(...)):
             gap: 1rem;
         }}
         button {{
-            background-color: #00b0b8;
+            background-color: #044BD9;
             color: white;
             border: none;
             padding: 0.7rem 1.2rem;
@@ -303,7 +303,7 @@ async def extract(file: UploadFile = File(...)):
             font-size: 1rem;
         }}
         button:hover {{
-            background-color: #019874;
+            background-color: #0476D9;
         }}
     </style>
 </head>
@@ -402,11 +402,11 @@ async def consulta_completa():
                 text-align: left;
             }}
             .table th {{
-                background-color: #00b0b8;
+                background-color: #044BD9;
             }}
             h3 {{
                 margin-top: 2rem;
-                border-bottom: 1px solid #00b0b8;
+                border-bottom: 1px solid #044BD9;
             }}
         </style>
     </head>
@@ -415,7 +415,7 @@ async def consulta_completa():
         <div style="margin-bottom: 2rem;">
         <a href="/export-excel" target="_blank">
             <button style="
-                background-color: #00b0b8;
+                background-color: #044BD9;
                 color: white;
                 border: none;
                 padding: 0.7rem 1.2rem;
